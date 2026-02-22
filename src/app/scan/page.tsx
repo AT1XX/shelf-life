@@ -198,7 +198,10 @@ export default function ScanPage() {
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               {error}
               <div className="mt-3">
-                <a href="/request" className="text-sm font-semibold text-red-700 underline">
+                <a
+                  href={`/request?barcode=${encodeURIComponent(barcode)}`}
+                  className="text-sm font-semibold text-red-700 underline"
+                >
                   Request this item to be added
                 </a>
               </div>

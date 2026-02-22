@@ -1,20 +1,31 @@
 "use client";
 
-import { useState } from "react";
 import Shell from "@/components/Shell";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function RequestPage() {
+  
+
+  const [loading, setLoading] = useState(false);
+  const [ok, setOk] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const barcodeFromUrl = (searchParams.get("barcode") ?? "").trim();
+
   const [form, setForm] = useState({
-    barcode: "",
+    barcode: barcodeFromUrl,
     name: "",
     shelfLifeDays: 2,
     notes: "",
     submittedBy: "",
   });
 
-  const [loading, setLoading] = useState(false);
-  const [ok, setOk] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+  if (barcodeFromUrl) {
+    setForm((prev) => ({ ...prev, barcode: barcodeFromUrl }));
+  }
+}, [barcodeFromUrl]);
 
   async function submit() {
     setOk(null);
@@ -42,7 +53,13 @@ export default function RequestPage() {
       }
 
       setOk("Request submitted. A manager will review it.");
-      setForm({ ...form, barcode: "", name: "", shelfLifeDays: 2, notes: "" });
+      setForm((prev) => ({
+      ...prev,
+      barcode: "",
+      name: "",
+      shelfLifeDays: 2,
+      notes: "",
+    }));
     } catch {
       setErr("Network error. Please try again.");
     } finally {
