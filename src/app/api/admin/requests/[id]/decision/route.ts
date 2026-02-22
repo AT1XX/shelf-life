@@ -9,7 +9,9 @@ const Schema = z.object({
   managerComment: z.string().optional(),
 });
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, context: any) {
+  const { params } = context as { params: { id: string } };
+  const id = params.id;
   const guard = requireAdminToken(req);
   if (guard) return guard;
 
