@@ -21,6 +21,9 @@ function toDateInputValue(d: Date) {
 
 export default function ScanPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const controlsRef = useRef<any>(null);
+  const hasResultRef = useRef(false);
+
   const [scanning, setScanning] = useState(false);
   const [barcode, setBarcode] = useState<string>("");
   const [product, setProduct] = useState<ProductDTO | null>(null);
@@ -29,49 +32,111 @@ export default function ScanPage() {
   const [thawDateStr, setThawDateStr] = useState(() => toDateInputValue(new Date()));
   const thawDate = useMemo(() => new Date(thawDateStr + "T00:00:00"), [thawDateStr]);
 
+  async function lookupProduct(scannedBarcode: string) {
+    try {
+      const res = await fetch(`/api/products/${encodeURIComponent(scannedBarcode)}`, {
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        setProduct(null);
+        setError("Product not found. Request this item to be added.");
+        return;
+      }
+
+      const data = (await res.json()) as ProductDTO;
+      setProduct(data);
+      setError(null);
+    } catch {
+      setProduct(null);
+      setError("Network error while looking up product.");
+    }
+  }
+
+  function stopCamera() {
+    try {
+      controlsRef.current?.stop();
+    } catch {}
+    controlsRef.current = null;
+    setScanning(false);
+  }
+
   useEffect(() => {
     if (!scanning) return;
 
-    let reader = new BrowserMultiFormatReader();
-    let active = true;
+    let alive = true;
+    const reader = new BrowserMultiFormatReader();
 
-    let controls: any;
+    // reset scan session state
+    hasResultRef.current = false;
+    setError(null);
+    setProduct(null);
 
-    async function start() {
-      const reader = new BrowserMultiFormatReader();
-
+    (async () => {
       try {
-        controls = await reader.decodeFromVideoDevice(
+        if (!videoRef.current) return;
+
+        controlsRef.current = await reader.decodeFromVideoDevice(
           undefined,
-          videoRef.current!,
+          videoRef.current,
           async (result, err) => {
+            if (!alive) return;
+
+            // If we already got a successful scan, ignore all further callbacks.
+            if (hasResultRef.current) return;
+
             if (result) {
-              const barcode = result.getText();
-              setBarcode(barcode);
-              setScanning(false);
+              hasResultRef.current = true;
 
-              // ✅ Proper way to stop camera
-              controls?.stop();
+              const text = result.getText().trim();
+              setBarcode(text);
 
-              // fetch product here...
+              // Stop camera FIRST to prevent extra callback noise
+              stopCamera();
+
+              // Then lookup
+              await lookupProduct(text);
+              return;
             }
 
             if (err) {
               const name = (err as any)?.name;
+
+              // Normal "no barcode in this frame" noise
               if (name === "NotFoundException") return;
-              setError("Camera scan error.");
+
+              // Benign stream/camera stop noise (often happens when stopping)
+              if (
+                name === "AbortError" ||
+                name === "NotAllowedError" ||
+                name === "NotReadableError" ||
+                name === "NotFoundError"
+              ) {
+                return;
+              }
+
+              // Only show errors if still scanning and no result yet
+              if (!hasResultRef.current) {
+                setError("Camera scan error. Try better lighting and hold steady.");
+              }
             }
           }
         );
       } catch {
-        setError("Camera access denied.");
+        setError("Camera access denied. Please allow permission and try again.");
+        stopCamera();
       }
-    }
-    start();
+    })();
 
     return () => {
-      controls?.stop();
+      alive = false;
+      stopCamera();
+      try {
+        // Some versions expose extra cleanup
+        (reader as any)?.reset?.();
+      } catch {}
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanning]);
 
   return (
@@ -84,7 +149,13 @@ export default function ScanPage() {
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold">Camera</p>
             <button
-              onClick={() => setScanning((s) => !s)}
+              onClick={() => {
+                setError(null);
+                setProduct(null);
+                setScanning((s) => !s);
+                // If turning off, stop camera immediately
+                if (scanning) stopCamera();
+              }}
               className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
             >
               {scanning ? "Stop" : "Start scan"}
@@ -105,7 +176,7 @@ export default function ScanPage() {
                 className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
               />
               <p className="mt-2 text-xs text-slate-500">
-                Store policy: thaw day counts as Day 1.
+                Store policy: 1 full thaw day, then shelf life starts.
               </p>
             </div>
 
@@ -127,10 +198,7 @@ export default function ScanPage() {
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               {error}
               <div className="mt-3">
-                <a
-                  href="/request"
-                  className="text-sm font-semibold text-red-700 underline"
-                >
+                <a href="/request" className="text-sm font-semibold text-red-700 underline">
                   Request this item to be added
                 </a>
               </div>
