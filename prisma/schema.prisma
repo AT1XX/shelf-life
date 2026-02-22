@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AuditAction {
+  PRODUCT_UPSERTED
+  REQUEST_CREATED
+  REQUEST_APPROVED
+  REQUEST_REJECTED
+}
+
+model Product {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  barcode       String   @unique
+  name          String
+  shelfLifeDays Int
+  notes         String?
+  isActive      Boolean  @default(true)
+  version       Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([name])
+}
+
+model NewItemRequest {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  status        RequestStatus @default(PENDING)
+
+  barcode       String
+  name          String
+  shelfLifeDays Int
+  notes         String?
+
+  submittedBy   String
+  submittedAt   DateTime      @default(now())
+
+  decisionBy    String?
+  decisionAt    DateTime?
+  managerComment String?
+
+  @@index([status, submittedAt])
+}
+
+model AuditLog {
+  id        String      @id @default(auto()) @map("_id") @db.ObjectId
+  action    AuditAction
+  actor     String?
+  entity    String
+  entityId  String
+  meta      Json?
+  createdAt DateTime @default(now())
+}
