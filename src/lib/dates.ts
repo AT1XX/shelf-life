@@ -13,10 +13,11 @@ export function addDaysLocal(date: Date, days: number) {
   return d;
 }
 
-export function computeWriteDate(thawDate: Date, shelfLifeDays: number) {
-  const base = startOfDayLocal(thawDate);
-  const offset = Math.max(0, shelfLifeDays);
-  return addDaysLocal(base, offset);
+export function computeWriteDate(thawDate: Date, shelfLifeDays: number, thawBufferDays: number = 1) {
+  const d = new Date(thawDate);
+  // Store policy: thaw buffer (0/1/2) + full shelf life days
+  d.setDate(d.getDate() + thawBufferDays + shelfLifeDays);
+  return d;
 }
 
 export function formatGunDate(date: Date) {

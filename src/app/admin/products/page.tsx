@@ -291,7 +291,7 @@ export default function AdminProductsPage() {
             placeholder="Paste ADMIN_TOKEN"
           />
           <p className="mt-2 text-xs text-slate-500">
-            Actions on this page send <span className="font-mono">x-admin-token</span>. Replace with SSO later.
+            Actions on this page send <span className="font-mono">admintoken</span>. Will be replaced with SSO later.
           </p>
 
           <div className="mt-4 flex flex-wrap gap-2">

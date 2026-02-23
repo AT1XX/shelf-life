@@ -64,7 +64,7 @@ export default function SearchPage() {
   return (
     <Shell
       title="Search frozen item"
-      subtitle="Search by product name to display shelf life and the date to write on the gun."
+      subtitle="Search by product name to display shelf life and the date to input into the gun."
     >
       <div className="space-y-6">
         <div className="grid gap-4 lg:grid-cols-3">

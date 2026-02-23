@@ -46,6 +46,7 @@ export default function ScanPage() {
   const thawDate = useMemo(() => new Date(thawDateStr + "T00:00:00"), [thawDateStr]);
 
   const [isMobile, setIsMobile] = useState(false);
+  
 
   useEffect(() => {
     setIsMobile(isMobileUA());
@@ -234,7 +235,8 @@ export default function ScanPage() {
             />
             <p className="mt-2 text-xs text-slate-500">
               Supported Barcode Types: UPC-A, EAN-13, EAN-14
-              {isMobile ? " (On mobile, camera scan is usually easiest.)" : ""}
+              <br/>
+              {isMobile ? " (On Smart Devices, use camera scan )" : ""}
             </p>
           </div>
 
