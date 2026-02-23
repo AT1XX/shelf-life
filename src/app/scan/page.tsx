@@ -46,6 +46,7 @@ export default function ScanPage() {
   const thawDate = useMemo(() => new Date(thawDateStr + "T00:00:00"), [thawDateStr]);
 
   const [isMobile, setIsMobile] = useState(false);
+  
 
   useEffect(() => {
     setIsMobile(isMobileUA());
