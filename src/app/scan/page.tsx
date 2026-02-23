@@ -235,7 +235,8 @@ export default function ScanPage() {
             />
             <p className="mt-2 text-xs text-slate-500">
               Supported Barcode Types: UPC-A, EAN-13, EAN-14
-              {isMobile ? " (On mobile, camera scan is usually easiest.)" : ""}
+              <br/>
+              {isMobile ? " (On mobile, use camera scan )" : ""}
             </p>
           </div>
 
