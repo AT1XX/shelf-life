@@ -19,33 +19,57 @@ function toDateInputValue(d: Date) {
   return x.toISOString().slice(0, 10);
 }
 
+function looksLikeBarcode(v: string) {
+  // UPC-A (12), EAN-13 (13), EAN-14 (14). Keep it simple.
+  return /^\d{12,14}$/.test(v);
+}
+
+function isMobileUA() {
+  if (typeof navigator === "undefined") return false;
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
 export default function ScanPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<any>(null);
   const hasResultRef = useRef(false);
 
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
   const [scanning, setScanning] = useState(false);
   const [barcode, setBarcode] = useState<string>("");
+  const [handheldValue, setHandheldValue] = useState("");
   const [product, setProduct] = useState<ProductDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [thawDateStr, setThawDateStr] = useState(() => toDateInputValue(new Date()));
   const thawDate = useMemo(() => new Date(thawDateStr + "T00:00:00"), [thawDateStr]);
 
-  async function lookupProduct(scannedBarcode: string) {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    setIsMobile(isMobileUA());
+  }, []);
+
+  async function lookupProduct(codeRaw: string) {
+    const code = codeRaw.trim();
+    if (!code) return;
+
+    setBarcode(code);
+    setError(null);
+    setProduct(null);
+
     try {
-      const res = await fetch(`/api/products/${encodeURIComponent(scannedBarcode)}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(`/api/products/${encodeURIComponent(code)}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         setProduct(null);
-        setError("Product not found. Request this item to be added.");
+        setError(data?.message ?? "Product not found. Request this item to be added.");
         return;
       }
 
-      const data = (await res.json()) as ProductDTO;
-      setProduct(data);
+      setProduct(data as ProductDTO);
       setError(null);
     } catch {
       setProduct(null);
@@ -61,13 +85,21 @@ export default function ScanPage() {
     setScanning(false);
   }
 
+  // Focus handheld input on non-mobile to support Zebra scan workflow
+  useEffect(() => {
+    if (!isMobile) {
+      // delay a tick so it doesn't fight with page transitions
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [isMobile]);
+
+  // Camera scan effect
   useEffect(() => {
     if (!scanning) return;
 
     let alive = true;
     const reader = new BrowserMultiFormatReader();
 
-    // reset scan session state
     hasResultRef.current = false;
     setError(null);
     setProduct(null);
@@ -81,20 +113,13 @@ export default function ScanPage() {
           videoRef.current,
           async (result, err) => {
             if (!alive) return;
-
-            // If we already got a successful scan, ignore all further callbacks.
             if (hasResultRef.current) return;
 
             if (result) {
               hasResultRef.current = true;
-
               const text = result.getText().trim();
-              setBarcode(text);
 
-              // Stop camera FIRST to prevent extra callback noise
               stopCamera();
-
-              // Then lookup
               await lookupProduct(text);
               return;
             }
@@ -102,10 +127,10 @@ export default function ScanPage() {
             if (err) {
               const name = (err as any)?.name;
 
-              // Normal "no barcode in this frame" noise
+              // normal scanning noise
               if (name === "NotFoundException") return;
 
-              // Benign stream/camera stop noise (often happens when stopping)
+              // benign stop/shutdown errors
               if (
                 name === "AbortError" ||
                 name === "NotAllowedError" ||
@@ -115,7 +140,6 @@ export default function ScanPage() {
                 return;
               }
 
-              // Only show errors if still scanning and no result yet
               if (!hasResultRef.current) {
                 setError("Camera scan error. Try better lighting and hold steady.");
               }
@@ -132,7 +156,6 @@ export default function ScanPage() {
       alive = false;
       stopCamera();
       try {
-        // Some versions expose extra cleanup
         (reader as any)?.reset?.();
       } catch {}
     };
@@ -142,30 +165,85 @@ export default function ScanPage() {
   return (
     <Shell
       title="Scan frozen item"
-      subtitle="Scan the barcode to display shelf life and the date to write on the gun."
+      subtitle="Use a handheld scanner or your phone camera to display shelf life and the date to input into the gun."
     >
       <div className="grid gap-6 lg:grid-cols-2">
+        {/* LEFT: Input + Camera */}
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold">Camera</p>
-            <button
-              onClick={() => {
-                setError(null);
-                setProduct(null);
-                setScanning((s) => !s);
-                // If turning off, stop camera immediately
-                if (scanning) stopCamera();
-              }}
-              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-            >
-              {scanning ? "Stop" : "Start scan"}
-            </button>
+            <p className="text-sm font-semibold">Scan</p>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setError(null);
+                  setProduct(null);
+                  stopCamera();
+                  // focus handheld input for Zebra
+                  inputRef.current?.focus();
+                }}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
+                title="Use handheld scanner or type barcode"
+              >
+                Handheld / Type
+              </button>
+
+              <button
+                onClick={() => {
+                  setError(null);
+                  setProduct(null);
+                  setScanning((s) => !s);
+                  if (scanning) stopCamera();
+                }}
+                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                title="Use camera scanner"
+              >
+                {scanning ? "Stop camera" : "Camera scan"}
+              </button>
+            </div>
           </div>
 
+          {/* Handheld (Zebra) / Manual input */}
+          <div className="mt-4">
+            <label className="text-sm font-medium">Handheld scanner (Zebra) or type barcode</label>
+            <input
+              ref={inputRef}
+              value={handheldValue}
+              onChange={async (e) => {
+                const v = e.target.value;
+                setHandheldValue(v);
+
+                // Auto-submit when it looks like UPC/EAN (helps Zebra even without Enter)
+                const trimmed = v.trim();
+                if (looksLikeBarcode(trimmed)) {
+                  await lookupProduct(trimmed);
+                  setHandheldValue("");
+                }
+              }}
+              onKeyDown={async (e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  await lookupProduct(handheldValue);
+                  setHandheldValue("");
+                }
+              }}
+              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+              placeholder="Tap here, then scan with Zebra (or type digits)"
+              inputMode="numeric"
+              autoComplete="off"
+            />
+            <p className="mt-2 text-xs text-slate-500">
+              Supported Barcode Types: UPC-A, EAN-13, EAN-14
+              {isMobile ? " (On mobile, camera scan is usually easiest.)" : ""}
+            </p>
+          </div>
+
+          {/* Camera preview */}
           <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
             <video ref={videoRef} className="h-[320px] w-full object-cover" muted playsInline />
           </div>
 
+          {/* Thaw date + last scan */}
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div>
               <label className="text-sm font-medium">Thawed date</label>
@@ -193,6 +271,7 @@ export default function ScanPage() {
           </div>
         </div>
 
+        {/* RIGHT: Result */}
         <div className="space-y-4">
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
