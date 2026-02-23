@@ -71,7 +71,7 @@ export default function Shell({
           <nav className="flex md:hidden items-center gap-2">
             <NavLink href="/scan">Scan</NavLink>
             <NavLink href="/search">Search</NavLink>
-            <NavLink href="/request">Request</NavLink>
+           
 
             <div className="relative" ref={moreRef}>
               <button
@@ -89,6 +89,14 @@ export default function Shell({
                   className="absolute right-0 z-50 mt-2 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
                   role="menu"
                 >
+                   <Link
+                    href="/request"
+                    onClick={() => setMoreOpen(false)}
+                    className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                    role="menuitem"
+                  >
+                     Request
+                  </Link>
                   <Link
                     href="/admin/approvals"
                     onClick={() => setMoreOpen(false)}
