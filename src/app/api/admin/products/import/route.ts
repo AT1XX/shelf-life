@@ -9,6 +9,7 @@ type Row = {
   shelfLifeDays: number;
   notes?: string;
   isActive?: boolean;
+  
 };
 
 function toBool(v: unknown): boolean | undefined {
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
     }
 
     const shelfLifeDays = Number(shelfLifeDaysRaw);
-    if (!Number.isFinite(shelfLifeDays) || shelfLifeDays < 0 || shelfLifeDays > 30) {
+    if (!Number.isFinite(shelfLifeDays) || shelfLifeDays < 0 || shelfLifeDays > 365) {
       warnings.push({ row: i + 2, message: "Invalid shelfLifeDays (must be 0-30)" });
       continue;
     }
