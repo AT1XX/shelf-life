@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 const CreateSchema = z.object({
   barcode: z.string().min(6),
   name: z.string().min(2),
-  shelfLifeDays: z.number().int().min(1).max(30),
+  shelfLifeDays: z.number().int().min(1).max(365),
   notes: z.string().optional(),
   submittedBy: z.string().min(2),
 });

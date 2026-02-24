@@ -92,7 +92,7 @@ export default function RequestFormClient() {
             <input
               type="number"
               min={1}
-              max={30}
+              max={365}
               value={form.shelfLifeDays}
               onChange={(e) => setForm({ ...form, shelfLifeDays: Number(e.target.value) })}
               className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
