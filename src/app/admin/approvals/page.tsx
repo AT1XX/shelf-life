@@ -84,8 +84,8 @@ export default function ApprovalsPage() {
                 placeholder="Paste ADMIN_TOKEN"
               />
               <p className="mt-2 text-xs text-slate-500">
-                This internal tool uses <span className="font-mono">x-admin-token</span> for manager actions.
-                Replace with SSO later.
+                This internal tool uses <span className="font-mono">admintoken</span> for manager actions.
+                Will be replaced with SSO later.
               </p>
             </div>
             <div>
