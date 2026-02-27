@@ -11,7 +11,7 @@ export default function RequestFormClient() {
   const [form, setForm] = useState({
     barcode: "",
     name: "",
-    shelfLifeDays: 2,
+    shelfLifeDays: "2",        // changed to string for better mobile editing
     notes: "",
     submittedBy: "",
   });
@@ -29,6 +29,14 @@ export default function RequestFormClient() {
   async function submit() {
     setOk(null);
     setErr(null);
+
+    // Validate shelf life
+    const shelfLife = Number(form.shelfLifeDays);
+    if (!form.shelfLifeDays || isNaN(shelfLife) || shelfLife < 1 || shelfLife > 365) {
+      setErr("Shelf life must be a number between 1 and 365.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -38,7 +46,7 @@ export default function RequestFormClient() {
         body: JSON.stringify({
           barcode: form.barcode.trim(),
           name: form.name.trim(),
-          shelfLifeDays: Number(form.shelfLifeDays),
+          shelfLifeDays: shelfLife,
           notes: form.notes.trim() || undefined,
           submittedBy: form.submittedBy.trim(),
         }),
@@ -52,7 +60,13 @@ export default function RequestFormClient() {
       }
 
       setOk("Request submitted. A manager will review it.");
-      setForm((prev) => ({ ...prev, barcode: "", name: "", shelfLifeDays: 2, notes: "" }));
+      setForm((prev) => ({
+        ...prev,
+        barcode: "",
+        name: "",
+        shelfLifeDays: "2",
+        notes: "",
+      }));
     } catch {
       setErr("Network error. Please try again.");
     } finally {
@@ -90,18 +104,21 @@ export default function RequestFormClient() {
           <div>
             <label className="text-sm font-medium">Shelf life (days)</label>
             <input
-              type="number"
-              min={1}
-              max={365}
+              type="text"
+              inputMode="numeric"
+              pattern="\d*"
               value={form.shelfLifeDays}
-              onChange={(e) => setForm({ ...form, shelfLifeDays: Number(e.target.value) })}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, "");
+                setForm({ ...form, shelfLifeDays: digits });
+              }}
               className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
             />
             <p className="mt-2 text-xs text-slate-500">Thaw + 1 full day, then shelf life starts.</p>
           </div>
 
           <div>
-            <label className="text-sm font-medium">Your name (or employee ID)</label>
+            <label className="text-sm font-medium">Employee name/ID</label>
             <input
               value={form.submittedBy}
               onChange={(e) => setForm({ ...form, submittedBy: e.target.value })}
