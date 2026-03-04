@@ -284,24 +284,20 @@ export default function ScanPage() {
             </div>
           ) : null}
 
+          {/* Thaw date + last scan */}
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-
-            {/* Thaw date */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-sm font-medium whitespace-nowrap">
-                  Thaw date
-                </label>
-                <input
-                  type="date"
-                  value={thawDateStr}
-                  onChange={(e) => setThawDateStr(e.target.value)}
-                  className="rounded-xl border border-slate-200 bg-white px-3 h-11 text-[16px] outline-none focus:ring-2 focus:ring-slate-300"
-                  style={{ WebkitAppearance: "none" }}
-                />
-              </div>
+            <div>
+              <label className="text-sm font-medium">Thawed date</label>
+              <input
+                type="date"
+                value={thawDateStr}
+                onChange={(e) => setThawDateStr(e.target.value)}
+                // ✅ 16px + fixed height prevents iOS zoom/overflow
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 h-12 text-[16px] leading-none outline-none focus:ring-2 focus:ring-slate-300"
+                style={{ WebkitAppearance: "none" }}
+              />
               <p className="mt-2 text-xs text-slate-500">
-                One full thaw day, then shelf life starts.
+                Store policy: 1 full thaw day, then shelf life starts.
               </p>
             </div>
 
