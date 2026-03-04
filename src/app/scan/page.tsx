@@ -19,8 +19,9 @@ function toDateInputValue(d: Date) {
   return x.toISOString().slice(0, 10);
 }
 
+// allow 11-14 digits (Zebra sometimes drops/omits a digit)
 function looksLikeBarcode(v: string) {
-  return /^\d{11,14}$/.test(v.trim()); // allow 11-14 (Zebra sometimes drops a digit)
+  return /^\d{11,14}$/.test(v.trim());
 }
 
 function vibrate(pattern: number | number[]) {
@@ -32,28 +33,45 @@ function vibrate(pattern: number | number[]) {
   }
 }
 
+function isIOS() {
+  if (typeof navigator === "undefined") return false;
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
 export default function ScanPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<any>(null);
   const hasResultRef = useRef(false);
 
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const lastTipAtRef = useRef(0); // throttle scan tips
+  const handheldRef = useRef<HTMLInputElement | null>(null);
+  const lastTipAtRef = useRef(0);
+
+  const resultRef = useRef<HTMLDivElement | null>(null);
 
   const [scanning, setScanning] = useState(false);
-  const [barcode, setBarcode] = useState<string>("");
+  const [barcode, setBarcode] = useState("");
   const [handheldValue, setHandheldValue] = useState("");
 
   const [product, setProduct] = useState<ProductDTO | null>(null);
 
-  // "Hard" errors (network/product not found/permissions)
+  // hard errors (permissions/network/not found)
   const [error, setError] = useState<string | null>(null);
 
-  // "Soft" scan guidance shown inside camera card (doesn't scroll page)
+  // soft tips (inside camera card only)
   const [scanTip, setScanTip] = useState<string | null>(null);
 
   const [thawDateStr, setThawDateStr] = useState(() => toDateInputValue(new Date()));
   const thawDate = useMemo(() => new Date(thawDateStr + "T00:00:00"), [thawDateStr]);
+
+  const [ios, setIos] = useState(false);
+  useEffect(() => setIos(isIOS()), []);
+
+  function scrollToResult() {
+    // iPhone: make it feel instant and avoid “where is it?”
+    requestAnimationFrame(() => {
+      resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
 
   async function lookupProduct(codeRaw: string) {
     const code = codeRaw.trim();
@@ -70,16 +88,24 @@ export default function ScanPage() {
       if (!res.ok) {
         setProduct(null);
         setError(data?.message ?? "Product not found. Request this item to be added.");
+        vibrate([60, 80, 60]);
+        scrollToResult();
         return;
       }
 
       setProduct(data as ProductDTO);
       setError(null);
       vibrate(40);
+
+      // hide keyboard on iPhone after successful scan/search
+      handheldRef.current?.blur();
+
+      scrollToResult();
     } catch {
       setProduct(null);
       setError("Network error while looking up product.");
       vibrate([60, 80, 60]);
+      scrollToResult();
     }
   }
 
@@ -89,14 +115,24 @@ export default function ScanPage() {
     } catch {}
     controlsRef.current = null;
     setScanning(false);
+    setScanTip(null);
   }
 
   function setTipThrottled(msg: string) {
     const now = Date.now();
-    if (now - lastTipAtRef.current < 800) return; // max ~1 update per 0.8s
+    if (now - lastTipAtRef.current < 800) return;
     lastTipAtRef.current = now;
     setScanTip(msg);
   }
+
+  // Autofocus handheld input when camera is off (great for Zebra workflow)
+  useEffect(() => {
+    if (!scanning) {
+      // prevent fighting page transitions
+      const t = setTimeout(() => handheldRef.current?.focus(), 80);
+      return () => clearTimeout(t);
+    }
+  }, [scanning]);
 
   // Camera scan effect
   useEffect(() => {
@@ -108,7 +144,7 @@ export default function ScanPage() {
     hasResultRef.current = false;
     setError(null);
     setProduct(null);
-    setScanTip("Hold steady and center the barcode in the box.");
+    setScanTip("Hold steady and center the barcode.");
 
     (async () => {
       try {
@@ -124,8 +160,6 @@ export default function ScanPage() {
             if (result) {
               hasResultRef.current = true;
               const text = result.getText().trim();
-
-              setScanTip(null);
               stopCamera();
               await lookupProduct(text);
               return;
@@ -134,14 +168,13 @@ export default function ScanPage() {
             if (err) {
               const name = (err as any)?.name;
 
-              // normal scanning noise: NOT_FOUND is expected while camera hunts
+              // expected while scanning
               if (name === "NotFoundException") {
-                // show tip occasionally, but do NOT throw a red error
-                setTipThrottled("Try brighter light and move closer to the barcode.");
+                setTipThrottled("Try brighter light, move closer, reduce glare.");
                 return;
               }
 
-              // benign stop/shutdown errors (don’t show)
+              // benign stop errors
               if (
                 name === "AbortError" ||
                 name === "NotAllowedError" ||
@@ -151,21 +184,19 @@ export default function ScanPage() {
                 return;
               }
 
-              // only show a soft tip for most camera issues
-              setTipThrottled("Having trouble reading. Reduce glare and keep the code flat.");
+              setTipThrottled("Having trouble reading. Keep code flat and steady.");
             }
           }
         );
       } catch {
         setError("Camera access denied. Please allow permission and try again.");
-        setScanTip(null);
         stopCamera();
+        scrollToResult();
       }
     })();
 
     return () => {
       alive = false;
-      setScanTip(null);
       stopCamera();
       try {
         (reader as any)?.reset?.();
@@ -179,46 +210,32 @@ export default function ScanPage() {
       title="Scan frozen item"
       subtitle="Use a handheld scanner or your phone camera to display shelf life and the date to input into the gun."
     >
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* iPhone-friendly: single column on mobile, 2-col on lg */}
+      <div className="grid gap-5 lg:grid-cols-2">
         {/* LEFT */}
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-semibold">Scan</p>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setError(null);
-                  setProduct(null);
-                  setScanTip(null);
-                  stopCamera();
-                  inputRef.current?.focus();
-                }}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-              >
-                Handheld / Type
-              </button>
-
-              <button
-                onClick={() => {
-                  setError(null);
-                  setProduct(null);
-                  setScanTip(null);
-                  setScanning((s) => !s);
-                  if (scanning) stopCamera();
-                }}
-                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-              >
-                {scanning ? "Stop camera" : "Camera scan"}
-              </button>
-            </div>
+            <button
+              onClick={() => {
+                setError(null);
+                setProduct(null);
+                setScanTip(null);
+                setScanning((s) => !s);
+                if (scanning) stopCamera();
+              }}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              {scanning ? "Stop camera" : "Camera scan"}
+            </button>
           </div>
 
-          {/* Handheld input */}
+          {/* Handheld / Type */}
           <div className="mt-4">
-            <label className="text-sm font-medium">Handheld scanner (Zebra) or type barcode</label>
+            <label className="text-sm font-medium">Barcode</label>
             <input
-              ref={inputRef}
+              ref={handheldRef}
               value={handheldValue}
               onChange={async (e) => {
                 const v = e.target.value;
@@ -235,32 +252,36 @@ export default function ScanPage() {
                   e.preventDefault();
                   await lookupProduct(handheldValue);
                   setHandheldValue("");
+                  handheldRef.current?.blur(); // close keyboard on iPhone
                 }
               }}
-              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-              placeholder="Tap here, then scan with Zebra (or type digits)"
+              // ✅ IMPORTANT: 16px prevents Safari zoom
+              className="mt-2 w-full rounded-xl border border-slate-200 px-4 h-12 text-[16px] outline-none focus:ring-2 focus:ring-slate-300"
+              placeholder="Tap here, then scan Zebra/type digits"
               inputMode="numeric"
               autoComplete="off"
             />
-            <p className="mt-2 text-xs text-slate-500">
-              Supported: UPC-A / EAN-13 / EAN-14 (handheld may send 11–14 digits)
-            </p>
+            <p className="mt-2 text-xs text-slate-500">Supported: UPC-A / EAN-13 / EAN-14</p>
           </div>
 
-          {/* Camera area — no page-jumping errors */}
+          {/* Camera: only when active */}
           {scanning ? (
             <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
               <div className="border-b border-slate-200 bg-white px-3 py-2">
                 <p className="text-xs font-semibold text-slate-900">Camera scanning…</p>
                 {scanTip ? <p className="mt-1 text-xs text-slate-500">{scanTip}</p> : null}
               </div>
-              <video ref={videoRef} className="h-[320px] w-full object-cover" muted playsInline />
+
+              {/* iPhone: avoid huge height; keep nice preview */}
+              <video
+                ref={videoRef}
+                className="w-full object-cover"
+                style={{ height: ios ? 260 : 320 }}
+                muted
+                playsInline
+              />
             </div>
-          ) : (
-            <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600">
-              Camera is off. Tap <span className="font-semibold">Camera scan</span> to start.
-            </div>
-          )}
+          ) : null}
 
           {/* Thaw date + last scan */}
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -270,6 +291,7 @@ export default function ScanPage() {
                 type="date"
                 value={thawDateStr}
                 onChange={(e) => setThawDateStr(e.target.value)}
+                // ✅ 16px + fixed height prevents iOS zoom/overflow
                 className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 h-12 text-[16px] leading-none outline-none focus:ring-2 focus:ring-slate-300"
                 style={{ WebkitAppearance: "none" }}
               />
@@ -281,18 +303,14 @@ export default function ScanPage() {
             <div className="rounded-xl bg-slate-50 p-3">
               <p className="text-xs font-medium text-slate-500">Last scan</p>
               <p className="mt-1 text-sm text-slate-800">
-                {barcode ? (
-                  <span className="font-mono font-semibold">{barcode}</span>
-                ) : (
-                  <span className="text-slate-500">No barcode scanned yet.</span>
-                )}
+                {barcode ? <span className="font-mono font-semibold">{barcode}</span> : <span className="text-slate-500">—</span>}
               </p>
             </div>
           </div>
         </div>
 
-        {/* RIGHT */}
-        <div className="space-y-4">
+        {/* RIGHT / RESULT (auto-scroll target) */}
+        <div ref={resultRef} className="space-y-4">
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               {error}
@@ -310,7 +328,7 @@ export default function ScanPage() {
           {product ? (
             <ProductResultCard product={product as any} thawDate={thawDate} />
           ) : (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-sm text-slate-600">
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
               Scan a product to see shelf life and the gun date.
             </div>
           )}

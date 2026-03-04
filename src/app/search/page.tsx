@@ -19,11 +19,6 @@ function toDateInputValue(d: Date) {
   return x.toISOString().slice(0, 10);
 }
 
-function isLgUp() {
-  if (typeof window === "undefined") return true;
-  return window.matchMedia("(min-width: 1024px)").matches;
-}
-
 function vibrate(pattern: number | number[]) {
   if (typeof navigator !== "undefined" && "vibrate" in navigator) {
     try {
@@ -31,6 +26,25 @@ function vibrate(pattern: number | number[]) {
       navigator.vibrate(pattern);
     } catch {}
   }
+}
+
+function useMediaQuery(query: string, initial = false) {
+  const [matches, setMatches] = useState(initial);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const m = window.matchMedia(query);
+    const onChange = () => setMatches(m.matches);
+    onChange();
+    if (m.addEventListener) m.addEventListener("change", onChange);
+    else m.addListener(onChange);
+    return () => {
+      if (m.removeEventListener) m.removeEventListener("change", onChange);
+      else m.removeListener(onChange);
+    };
+  }, [query]);
+
+  return matches;
 }
 
 function SwipeableSheet({
@@ -49,7 +63,7 @@ function SwipeableSheet({
   const currentY = useRef(0);
   const [dragging, setDragging] = useState(false);
 
-  // ✅ Lock background scroll while sheet is open
+  // Lock background scroll while open (iPhone-friendly)
   useEffect(() => {
     const html = document.documentElement;
     const body = document.body;
@@ -62,7 +76,6 @@ function SwipeableSheet({
 
     const scrollY = window.scrollY;
 
-    // Prevent scrolling + keep the page from jumping
     html.style.overflow = "hidden";
     body.style.overflow = "hidden";
     body.style.position = "fixed";
@@ -75,22 +88,20 @@ function SwipeableSheet({
       body.style.position = prevBodyPosition;
       body.style.top = prevBodyTop;
       body.style.width = prevBodyWidth;
-
-      // Restore previous scroll position
       window.scrollTo(0, scrollY);
     };
   }, []);
 
-  function handleTouchStart(e: React.TouchEvent) {
+  // Important: swipe ONLY from the handle area to avoid fighting scroll content
+  function onHandleTouchStart(e: React.TouchEvent) {
     startY.current = e.touches[0].clientY;
     setDragging(true);
   }
 
-  function handleTouchMove(e: React.TouchEvent) {
+  function onHandleTouchMove(e: React.TouchEvent) {
     if (startY.current === null) return;
     const delta = e.touches[0].clientY - startY.current;
 
-    // Only drag downward
     if (delta > 0) {
       currentY.current = delta;
       if (sheetRef.current) {
@@ -99,7 +110,7 @@ function SwipeableSheet({
     }
   }
 
-  function handleTouchEnd() {
+  function onHandleTouchEnd() {
     setDragging(false);
 
     if (currentY.current > 120) {
@@ -114,15 +125,15 @@ function SwipeableSheet({
 
   return (
     <div className="fixed inset-0 z-50">
-      {/* ✅ Backdrop */}
+      {/* Backdrop */}
       <button
         type="button"
-        aria-label="Close sheet"
-        className="absolute inset-0 bg-black/20"
+        aria-label="Close"
+        className="absolute inset-0 bg-black/25"
         onClick={onClose}
       />
 
-      {/* ✅ Sheet */}
+      {/* Sheet */}
       <div
         ref={sheetRef}
         className={[
@@ -131,24 +142,31 @@ function SwipeableSheet({
           "transition-transform duration-200",
           dragging ? "duration-0" : "",
         ].join(" ")}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
         role="dialog"
         aria-modal="true"
+        style={{
+          // safe area for iPhone home indicator
+          paddingBottom: "max(env(safe-area-inset-bottom), 12px)",
+          touchAction: "pan-y",
+        }}
       >
-        {/* Drag handle */}
-        <div className="flex justify-center pt-3">
-          <div className="h-1.5 w-10 rounded-full bg-slate-300" />
+        {/* Handle area (swipe here) */}
+        <div
+          className="pt-3"
+          onTouchStart={onHandleTouchStart}
+          onTouchMove={onHandleTouchMove}
+          onTouchEnd={onHandleTouchEnd}
+        >
+          <div className="flex justify-center">
+            <div className="h-1.5 w-10 rounded-full bg-slate-300" />
+          </div>
         </div>
 
         {/* Header */}
         <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-100">
           <div className="min-w-0">
             <p className="text-sm font-semibold truncate">{title}</p>
-            {subtitle ? (
-              <p className="text-xs text-slate-500 truncate">{subtitle}</p>
-            ) : null}
+            {subtitle ? <p className="text-xs text-slate-500 truncate">{subtitle}</p> : null}
           </div>
           <button
             onClick={onClose}
@@ -158,7 +176,7 @@ function SwipeableSheet({
           </button>
         </div>
 
-        {/* Content: sheet itself can scroll */}
+        {/* Content scrolls (not the page) */}
         <div className="max-h-[75vh] overflow-auto overscroll-contain">
           {children}
         </div>
@@ -182,16 +200,19 @@ export default function SearchPage() {
 
   const canSearch = useMemo(() => query.trim().length >= 2, [query]);
 
+  // desktop breakpoint (lg)
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+
   // Mobile sheet
   const [sheetOpen, setSheetOpen] = useState(false);
 
   // Autofocus search input
   useEffect(() => {
-    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    const t = setTimeout(() => inputRef.current?.focus(), 80);
     return () => clearTimeout(t);
   }, []);
 
-  // Close sheet on Escape (desktop)
+  // Close sheet on Escape
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setSheetOpen(false);
@@ -254,7 +275,10 @@ export default function SearchPage() {
 
       setSelected(full);
 
-      if (!isLgUp()) {
+      // close keyboard on iPhone after selection
+      inputRef.current?.blur();
+
+      if (!isDesktop) {
         setSheetOpen(true);
         vibrate(30);
       } else {
@@ -262,7 +286,8 @@ export default function SearchPage() {
       }
     } catch {
       setSelected(p);
-      if (!isLgUp()) setSheetOpen(true);
+      inputRef.current?.blur();
+      if (!isDesktop) setSheetOpen(true);
       else scrollToDesktopResult();
     }
   }
@@ -281,7 +306,8 @@ export default function SearchPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="e.g., croissant, danish, muffin..."
-              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+              // ✅ 16px prevents iOS Safari zoom
+              className="mt-2 w-full rounded-xl border border-slate-200 px-4 h-12 text-[16px] outline-none focus:ring-2 focus:ring-slate-300"
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
@@ -293,12 +319,12 @@ export default function SearchPage() {
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <label className="text-sm font-medium">Thawed date</label>
             <input
-                type="date"
-                value={thawDateStr}
-                onChange={(e) => setThawDateStr(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 h-12 text-[16px] leading-none outline-none focus:ring-2 focus:ring-slate-300"
-                style={{ WebkitAppearance: "none" }}
-              />
+              type="date"
+              value={thawDateStr}
+              onChange={(e) => setThawDateStr(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 h-12 text-[16px] leading-none outline-none focus:ring-2 focus:ring-slate-300"
+              style={{ WebkitAppearance: "none" }}
+            />
             <div className="mt-2 text-xs text-slate-500">Thaw day counts as Day 1.</div>
           </div>
         </div>
@@ -317,7 +343,8 @@ export default function SearchPage() {
               {loading && <p className="text-xs text-slate-500">Searching…</p>}
             </div>
 
-            <div className="mt-3 max-h-[55vh] overflow-auto divide-y divide-slate-100 rounded-xl border border-slate-100">
+            {/* iPhone-friendly: capped list height; no endless scrolling */}
+            <div className="mt-3 max-h-[55vh] overflow-auto overscroll-contain divide-y divide-slate-100 rounded-xl border border-slate-100">
               {results.length === 0 && !loading ? (
                 <p className="p-4 text-sm text-slate-500">No results yet.</p>
               ) : (
@@ -331,13 +358,18 @@ export default function SearchPage() {
                       <p className="text-sm font-medium truncate">{p.name}</p>
                       <p className="text-xs text-slate-500">Barcode {p.barcode}</p>
                     </div>
-                    <span className="text-xs font-semibold text-slate-700">
-                      {p.shelfLifeDays}d
-                    </span>
+                    <span className="text-xs font-semibold text-slate-700">{p.shelfLifeDays}d</span>
                   </button>
                 ))
               )}
             </div>
+
+            {/* Helpful hint for mobile */}
+            {!isDesktop ? (
+              <p className="mt-3 text-xs text-slate-500">
+                Tap a result to open details. Swipe down to close.
+              </p>
+            ) : null}
           </div>
 
           {/* Desktop sticky card */}
@@ -353,7 +385,7 @@ export default function SearchPage() {
         </div>
       </div>
 
-      {/* Mobile bottom sheet with swipe-down to close */}
+      {/* Mobile bottom sheet */}
       <div className="lg:hidden">
         {sheetOpen && selected ? (
           <SwipeableSheet

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Shell from "@/components/Shell";
 
@@ -8,10 +8,12 @@ export default function RequestFormClient() {
   const searchParams = useSearchParams();
   const barcodeFromUrl = (searchParams.get("barcode") ?? "").trim();
 
+  const nameRef = useRef<HTMLInputElement | null>(null);
+
   const [form, setForm] = useState({
     barcode: "",
     name: "",
-    shelfLifeDays: "2",        // changed to string for better mobile editing
+    shelfLifeDays: "2", // keep string for mobile editing
     notes: "",
     submittedBy: "",
   });
@@ -23,6 +25,8 @@ export default function RequestFormClient() {
   useEffect(() => {
     if (barcodeFromUrl) {
       setForm((prev) => ({ ...prev, barcode: barcodeFromUrl }));
+      // nice UX: move user to name field
+      setTimeout(() => nameRef.current?.focus(), 100);
     }
   }, [barcodeFromUrl]);
 
@@ -30,9 +34,23 @@ export default function RequestFormClient() {
     setOk(null);
     setErr(null);
 
-    // Validate shelf life
     const shelfLife = Number(form.shelfLifeDays);
-    if (!form.shelfLifeDays || isNaN(shelfLife) || shelfLife < 1 || shelfLife > 365) {
+
+    if (!form.barcode.trim()) {
+      setErr("Barcode is required.");
+      return;
+    }
+    if (!form.name.trim()) {
+      setErr("Product name is required.");
+      return;
+    }
+    if (!form.submittedBy.trim()) {
+      setErr("Employee name/ID is required.");
+      return;
+    }
+
+    // Allow >30; your API/import logic can support higher values too
+    if (!form.shelfLifeDays || Number.isNaN(shelfLife) || shelfLife < 1 || shelfLife > 365) {
       setErr("Shelf life must be a number between 1 and 365.");
       return;
     }
@@ -66,6 +84,8 @@ export default function RequestFormClient() {
         name: "",
         shelfLifeDays: "2",
         notes: "",
+        // keep submittedBy so they don't retype every time
+        // submittedBy: "",
       }));
     } catch {
       setErr("Network error. Please try again.");
@@ -86,18 +106,26 @@ export default function RequestFormClient() {
             <input
               value={form.barcode}
               onChange={(e) => setForm({ ...form, barcode: e.target.value })}
-              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+              className="mt-2 w-full rounded-xl border border-slate-200 px-4 h-12 text-[16px] outline-none focus:ring-2 focus:ring-slate-300"
               placeholder="e.g., 0623461234567"
+              inputMode="numeric"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </div>
 
           <div>
             <label className="text-sm font-medium">Product name</label>
             <input
+              ref={nameRef}
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+              className="mt-2 w-full rounded-xl border border-slate-200 px-4 h-12 text-[16px] outline-none focus:ring-2 focus:ring-slate-300"
               placeholder="e.g., Frozen Chocolate Croissant 4-Pack"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </div>
 
@@ -112,9 +140,12 @@ export default function RequestFormClient() {
                 const digits = e.target.value.replace(/\D/g, "");
                 setForm({ ...form, shelfLifeDays: digits });
               }}
-              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+              className="mt-2 w-full rounded-xl border border-slate-200 px-4 h-12 text-[16px] outline-none focus:ring-2 focus:ring-slate-300"
+              autoComplete="off"
             />
-            <p className="mt-2 text-xs text-slate-500">Thaw + 1 full day, then shelf life starts.</p>
+            <p className="mt-2 text-xs text-slate-500">
+              Policy: thaw + 1 full day, then shelf life starts.
+            </p>
           </div>
 
           <div>
@@ -122,8 +153,11 @@ export default function RequestFormClient() {
             <input
               value={form.submittedBy}
               onChange={(e) => setForm({ ...form, submittedBy: e.target.value })}
-              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+              className="mt-2 w-full rounded-xl border border-slate-200 px-4 h-12 text-[16px] outline-none focus:ring-2 focus:ring-slate-300"
               placeholder="e.g., Abel (Bakery)"
+              autoComplete="name"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </div>
 
@@ -132,9 +166,11 @@ export default function RequestFormClient() {
             <textarea
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-[16px] outline-none focus:ring-2 focus:ring-slate-300"
               rows={3}
               placeholder="e.g., Do not refreeze once thawed. Keep covered."
+              autoCorrect="off"
+              spellCheck={false}
             />
           </div>
         </div>
@@ -153,7 +189,7 @@ export default function RequestFormClient() {
         <button
           onClick={submit}
           disabled={loading}
-          className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+          className="w-full sm:w-auto rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
         >
           {loading ? "Submitting…" : "Submit request"}
         </button>
