@@ -99,6 +99,7 @@ export default function Shell({
             <nav className="hidden md:flex items-center gap-2">
               <NavLink href="/scan">Scan</NavLink>
               <NavLink href="/search">Search</NavLink>
+              <NavLink href="/dates">Dates</NavLink>
               <NavLink href="/request">Request</NavLink>
               <NavLink href="/admin">Admin</NavLink>
             </nav>
@@ -109,7 +110,7 @@ export default function Shell({
             <div className="flex flex-1 items-center gap-2">
               <NavLink href="/scan">Scan</NavLink>
               <NavLink href="/search">Search</NavLink>
-              <NavLink href="/request">Request</NavLink>
+              <NavLink href="/dates">Dates</NavLink>
             </div>
 
             <div className="relative" ref={moreRef}>
@@ -128,6 +129,14 @@ export default function Shell({
                   className="absolute right-0 z-50 mt-2 w-[min(92vw,18rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg"
                   role="menu"
                 >
+                  <Link
+                    href="/request"
+                    onClick={() => setMoreOpen(false)}
+                    className="block px-4 py-3 text-[16px] font-semibold text-slate-800 hover:bg-slate-50"
+                    role="menuitem"
+                  >
+                    Request
+                  </Link>
                   <Link
                     href="/admin"
                     onClick={() => setMoreOpen(false)}

@@ -59,6 +59,8 @@ function SwipeableSheet({
   subtitle?: string;
 }) {
   const sheetRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
   const startY = useRef<number | null>(null);
   const currentY = useRef(0);
   const [dragging, setDragging] = useState(false);
@@ -92,35 +94,50 @@ function SwipeableSheet({
     };
   }, []);
 
-  // Important: swipe ONLY from the handle area to avoid fighting scroll content
-  function onHandleTouchStart(e: React.TouchEvent) {
+  function resetTransform() {
+    if (sheetRef.current) sheetRef.current.style.transform = "translateY(0)";
+    currentY.current = 0;
+    startY.current = null;
+  }
+
+  // ✅ Start dragging ONLY if sheet content is scrolled to top
+  function onTouchStart(e: React.TouchEvent) {
+    const scroller = contentRef.current;
+    const scrollTop = scroller ? scroller.scrollTop : 0;
+
+    // If user is mid-scroll in content, don't begin dismiss gesture
+    if (scrollTop > 0) return;
+
     startY.current = e.touches[0].clientY;
     setDragging(true);
   }
 
-  function onHandleTouchMove(e: React.TouchEvent) {
+  function onTouchMove(e: React.TouchEvent) {
     if (startY.current === null) return;
+
     const delta = e.touches[0].clientY - startY.current;
 
+    // Only drag down
     if (delta > 0) {
       currentY.current = delta;
-      if (sheetRef.current) {
-        sheetRef.current.style.transform = `translateY(${delta}px)`;
-      }
+      if (sheetRef.current) sheetRef.current.style.transform = `translateY(${delta}px)`;
+
+      // ✅ Prevent iOS rubber-band scroll while dismissing
+      e.preventDefault();
     }
   }
 
-  function onHandleTouchEnd() {
+  function onTouchEnd() {
+    if (startY.current === null) return;
+
     setDragging(false);
 
     if (currentY.current > 120) {
       onClose();
-    } else {
-      if (sheetRef.current) sheetRef.current.style.transform = "translateY(0)";
+      return;
     }
 
-    startY.current = null;
-    currentY.current = 0;
+    resetTransform();
   }
 
   return (
@@ -139,27 +156,24 @@ function SwipeableSheet({
         className={[
           "absolute inset-x-0 bottom-0 mx-auto max-w-5xl",
           "rounded-t-2xl border border-slate-200 bg-white shadow-2xl",
-          "transition-transform duration-200",
-          dragging ? "duration-0" : "",
+          "transition-transform",
+          dragging ? "duration-0" : "duration-200",
         ].join(" ")}
         role="dialog"
         aria-modal="true"
         style={{
-          // safe area for iPhone home indicator
           paddingBottom: "max(env(safe-area-inset-bottom), 12px)",
+          // Important: allow touch gestures
           touchAction: "pan-y",
         }}
+        // ✅ Swipe down anywhere on the sheet container
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
       >
-        {/* Handle area (swipe here) */}
-        <div
-          className="pt-3"
-          onTouchStart={onHandleTouchStart}
-          onTouchMove={onHandleTouchMove}
-          onTouchEnd={onHandleTouchEnd}
-        >
-          <div className="flex justify-center">
-            <div className="h-1.5 w-10 rounded-full bg-slate-300" />
-          </div>
+        {/* Handle (still nice visually, but no longer required) */}
+        <div className="flex justify-center pt-3">
+          <div className="h-1.5 w-10 rounded-full bg-slate-300" />
         </div>
 
         {/* Header */}
@@ -176,8 +190,11 @@ function SwipeableSheet({
           </button>
         </div>
 
-        {/* Content scrolls (not the page) */}
-        <div className="max-h-[75vh] overflow-auto overscroll-contain">
+        {/* Content scrolls */}
+        <div
+          ref={contentRef}
+          className="max-h-[75vh] overflow-auto overscroll-contain"
+        >
           {children}
         </div>
       </div>

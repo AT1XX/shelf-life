@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import Shell from "@/components/Shell";
 import ProductResultCard from "@/components/ProductResultCard";
+import QuickDaysCard from "@/components/QuickDaysCard";
 
 type ProductDTO = {
   barcode: string;
@@ -324,13 +325,15 @@ export default function ScanPage() {
               </div>
             </div>
           )}
-
+          
           {product ? (
             <ProductResultCard product={product as any} thawDate={thawDate} />
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
               Scan a product to see shelf life and the gun date.
             </div>
+            
+            
           )}
         </div>
       </div>
