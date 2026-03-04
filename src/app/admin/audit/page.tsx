@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Shell from "@/components/Shell";
+import AdminGate from "@/components/AdminGate";
 
 type AuditLogDTO = {
   id?: string;
@@ -65,6 +66,7 @@ export default function AdminAuditPage() {
   }, [canLoad]);
 
   return (
+    <AdminGate>
     <Shell
       title="Audit log"
       subtitle="Manager-only history of imports, approvals, and product updates."
@@ -169,5 +171,6 @@ export default function AdminAuditPage() {
         )}
       </div>
     </Shell>
+    </AdminGate>
   );
 }

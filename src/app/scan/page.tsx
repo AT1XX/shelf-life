@@ -20,8 +20,8 @@ function toDateInputValue(d: Date) {
 }
 
 function looksLikeBarcode(v: string) {
-  // UPC-A (12), EAN-13 (13), EAN-14 (14). Keep it simple.
-  return /^\d{12,14}$/.test(v);
+  // UPC-A (12), EAN-13 (13), EAN-14 (14)
+  return /^\d{12,14}$/.test(v.trim());
 }
 
 function isMobileUA() {
@@ -35,6 +35,7 @@ export default function ScanPage() {
   const hasResultRef = useRef(false);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const resultRef = useRef<HTMLDivElement | null>(null);
 
   const [scanning, setScanning] = useState(false);
   const [barcode, setBarcode] = useState<string>("");
@@ -46,11 +47,15 @@ export default function ScanPage() {
   const thawDate = useMemo(() => new Date(thawDateStr + "T00:00:00"), [thawDateStr]);
 
   const [isMobile, setIsMobile] = useState(false);
-  
 
-  useEffect(() => {
-    setIsMobile(isMobileUA());
-  }, []);
+  useEffect(() => setIsMobile(isMobileUA()), []);
+
+  function scrollToResult() {
+    // Small delay helps on mobile after state updates/layout changes
+    setTimeout(() => {
+      resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  }
 
   async function lookupProduct(codeRaw: string) {
     const code = codeRaw.trim();
@@ -61,20 +66,25 @@ export default function ScanPage() {
     setProduct(null);
 
     try {
-      const res = await fetch(`/api/products/${encodeURIComponent(code)}`, { cache: "no-store" });
+      const res = await fetch(`/api/products/${encodeURIComponent(code)}`, {
+        cache: "no-store",
+      });
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         setProduct(null);
         setError(data?.message ?? "Product not found. Request this item to be added.");
+        scrollToResult();
         return;
       }
 
       setProduct(data as ProductDTO);
       setError(null);
+      scrollToResult();
     } catch {
       setProduct(null);
       setError("Network error while looking up product.");
+      scrollToResult();
     }
   }
 
@@ -86,10 +96,9 @@ export default function ScanPage() {
     setScanning(false);
   }
 
-  // Focus handheld input on non-mobile to support Zebra scan workflow
+  // Focus handheld input on non-mobile (Zebra workflow)
   useEffect(() => {
     if (!isMobile) {
-      // delay a tick so it doesn't fight with page transitions
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [isMobile]);
@@ -143,6 +152,7 @@ export default function ScanPage() {
 
               if (!hasResultRef.current) {
                 setError("Camera scan error. Try better lighting and hold steady.");
+                scrollToResult();
               }
             }
           }
@@ -150,6 +160,7 @@ export default function ScanPage() {
       } catch {
         setError("Camera access denied. Please allow permission and try again.");
         stopCamera();
+        scrollToResult();
       }
     })();
 
@@ -168,19 +179,20 @@ export default function ScanPage() {
       title="Scan frozen item"
       subtitle="Use a handheld scanner or your phone camera to display shelf life and the date to input into the gun."
     >
+      {/* Mobile-first layout: stacks nicely on phone, side-by-side on desktop */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* LEFT: Input + Camera */}
+        {/* LEFT: Scan controls */}
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-semibold">Scan</p>
 
             <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={() => {
                   setError(null);
                   setProduct(null);
                   stopCamera();
-                  // focus handheld input for Zebra
                   inputRef.current?.focus();
                 }}
                 className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
@@ -190,11 +202,15 @@ export default function ScanPage() {
               </button>
 
               <button
+                type="button"
                 onClick={() => {
                   setError(null);
                   setProduct(null);
-                  setScanning((s) => !s);
-                  if (scanning) stopCamera();
+                  setScanning((s) => {
+                    const next = !s;
+                    if (s) stopCamera();
+                    return next;
+                  });
                 }}
                 className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
                 title="Use camera scanner"
@@ -206,7 +222,7 @@ export default function ScanPage() {
 
           {/* Handheld (Zebra) / Manual input */}
           <div className="mt-4">
-            <label className="text-sm font-medium">Handheld scanner (Zebra) or type barcode</label>
+            <label className="text-sm font-medium">Barcode</label>
             <input
               ref={inputRef}
               value={handheldValue}
@@ -214,7 +230,7 @@ export default function ScanPage() {
                 const v = e.target.value;
                 setHandheldValue(v);
 
-                // Auto-submit when it looks like UPC/EAN (helps Zebra even without Enter)
+                // Auto-submit once it looks complete (helps Zebra even without Enter)
                 const trimmed = v.trim();
                 if (looksLikeBarcode(trimmed)) {
                   await lookupProduct(trimmed);
@@ -233,17 +249,25 @@ export default function ScanPage() {
               inputMode="numeric"
               autoComplete="off"
             />
+
             <p className="mt-2 text-xs text-slate-500">
               Supported Barcode Types: UPC-A, EAN-13, EAN-14
-              <br/>
-              {isMobile ? " (On Smart Devices, use camera scan )" : ""}
+              <br />
+              {isMobile ? "On smart devices, camera scan is recommended." : ""}
             </p>
           </div>
 
-          {/* Camera preview */}
-          <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-            <video ref={videoRef} className="h-[320px] w-full object-cover" muted playsInline />
-          </div>
+          {/* ✅ Camera preview only when active */}
+          {scanning ? (
+            <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+              <video
+                ref={videoRef}
+                className="h-[320px] w-full object-cover"
+                muted
+                playsInline
+              />
+            </div>
+          ) : null}
 
           {/* Thaw date + last scan */}
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -273,8 +297,8 @@ export default function ScanPage() {
           </div>
         </div>
 
-        {/* RIGHT: Result */}
-        <div className="space-y-4">
+        {/* RIGHT: Result (scroll target) */}
+        <div ref={resultRef} className="space-y-4">
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               {error}

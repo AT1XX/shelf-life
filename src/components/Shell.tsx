@@ -87,13 +87,7 @@ export default function Shell({
             <NavLink href="/search">Search</NavLink>
             <NavLink href="/request">Request</NavLink>
             <NavLink href="/admin">Admin</NavLink>
-            {hasAdmin ? (
-              <>
-                <NavLink href="/admin/approvals">Approvals</NavLink>
-                <NavLink href="/admin/products">Products</NavLink>
-                <NavLink href="/admin/audit">Audit</NavLink> 
-              </>
-            ) : null}
+            
           </nav>
 
           {/* Mobile nav: show main links + More menu */}
