@@ -49,6 +49,38 @@ function SwipeableSheet({
   const currentY = useRef(0);
   const [dragging, setDragging] = useState(false);
 
+  // ✅ Lock background scroll while sheet is open
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    const prevBodyPosition = body.style.position;
+    const prevBodyTop = body.style.top;
+    const prevBodyWidth = body.style.width;
+
+    const scrollY = window.scrollY;
+
+    // Prevent scrolling + keep the page from jumping
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+      body.style.position = prevBodyPosition;
+      body.style.top = prevBodyTop;
+      body.style.width = prevBodyWidth;
+
+      // Restore previous scroll position
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+
   function handleTouchStart(e: React.TouchEvent) {
     startY.current = e.touches[0].clientY;
     setDragging(true);
@@ -57,6 +89,8 @@ function SwipeableSheet({
   function handleTouchMove(e: React.TouchEvent) {
     if (startY.current === null) return;
     const delta = e.touches[0].clientY - startY.current;
+
+    // Only drag downward
     if (delta > 0) {
       currentY.current = delta;
       if (sheetRef.current) {
@@ -79,21 +113,29 @@ function SwipeableSheet({
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50">
-      {/* Backdrop */}
-      <div className="absolute inset-0 -top-24 bg-black/10" onClick={onClose} />
+    <div className="fixed inset-0 z-50">
+      {/* ✅ Backdrop */}
+      <button
+        type="button"
+        aria-label="Close sheet"
+        className="absolute inset-0 bg-black/20"
+        onClick={onClose}
+      />
 
-      {/* Sheet */}
+      {/* ✅ Sheet */}
       <div
         ref={sheetRef}
         className={[
-          "relative mx-auto max-w-5xl rounded-t-2xl border border-slate-200 bg-white shadow-2xl",
+          "absolute inset-x-0 bottom-0 mx-auto max-w-5xl",
+          "rounded-t-2xl border border-slate-200 bg-white shadow-2xl",
           "transition-transform duration-200",
           dragging ? "duration-0" : "",
         ].join(" ")}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        role="dialog"
+        aria-modal="true"
       >
         {/* Drag handle */}
         <div className="flex justify-center pt-3">
@@ -104,7 +146,9 @@ function SwipeableSheet({
         <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-100">
           <div className="min-w-0">
             <p className="text-sm font-semibold truncate">{title}</p>
-            {subtitle ? <p className="text-xs text-slate-500 truncate">{subtitle}</p> : null}
+            {subtitle ? (
+              <p className="text-xs text-slate-500 truncate">{subtitle}</p>
+            ) : null}
           </div>
           <button
             onClick={onClose}
@@ -114,8 +158,10 @@ function SwipeableSheet({
           </button>
         </div>
 
-        {/* Content */}
-        <div className="max-h-[75vh] overflow-auto">{children}</div>
+        {/* Content: sheet itself can scroll */}
+        <div className="max-h-[75vh] overflow-auto overscroll-contain">
+          {children}
+        </div>
       </div>
     </div>
   );
