@@ -332,18 +332,30 @@ export default function SearchPage() {
             />
             <div className="mt-2 text-xs text-slate-500">Type at least 2 characters.</div>
           </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
 
+          {/* Thaw date */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <label className="text-sm font-medium">Thawed date</label>
-            <input
-              type="date"
-              value={thawDateStr}
-              onChange={(e) => setThawDateStr(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 h-12 text-[16px] leading-none outline-none focus:ring-2 focus:ring-slate-300"
-              style={{ WebkitAppearance: "none" }}
-            />
-            <div className="mt-2 text-xs text-slate-500">Thaw day counts as Day 1.</div>
+            <div className="flex items-center justify-between gap-3">
+              
+              <label className="text-sm font-medium whitespace-nowrap">
+                Thaw date
+              </label>
+
+              <input
+                type="date"
+                value={thawDateStr}
+                onChange={(e) => setThawDateStr(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-white px-3 h-11 text-[16px] outline-none focus:ring-2 focus:ring-slate-300"
+                style={{ WebkitAppearance: "none" }}
+              />
+            </div>
+              <p className="mt-2 text-xs text-slate-500">
+                Thaw day counts as Day 1.
+              </p>
+            </div>
           </div>
+          
         </div>
 
         {error && (
