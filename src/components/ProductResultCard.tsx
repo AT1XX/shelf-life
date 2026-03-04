@@ -22,10 +22,9 @@ export default function ProductResultCard({
 }) {
   const thaw = startOfDayLocal(thawDate);
 
-  // session-persisted thaw buffer (0/1/2)
   const [thawBufferDays, setThawBufferDays] = useState<number>(1);
 
-  // Load once
+  // Load thaw buffer once
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(THAW_BUFFER_KEY);
@@ -38,7 +37,7 @@ export default function ProductResultCard({
     } catch {}
   }, []);
 
-  // Persist whenever it changes
+  // Persist thaw buffer
   useEffect(() => {
     try {
       sessionStorage.setItem(THAW_BUFFER_KEY, String(thawBufferDays));
@@ -48,6 +47,9 @@ export default function ProductResultCard({
   const writeDate = useMemo(() => {
     return computeWriteDate(thaw, product.shelfLifeDays, thawBufferDays);
   }, [thaw, product.shelfLifeDays, thawBufferDays]);
+
+  const hasNotes =
+    typeof product.notes === "string" && product.notes.trim().length > 0;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -75,7 +77,7 @@ export default function ProductResultCard({
         </div>
       </div>
 
-      {/* Thaw buffer pills */}
+      {/* Thaw buffer selector */}
       <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -109,21 +111,22 @@ export default function ProductResultCard({
             </button>
           </div>
         </div>
-        {/*
-          <p className="mt-3 text-xs text-slate-600">
-            Formula: <span className="font-mono">gunDate = thawDate + thawBuffer + shelfLifeDays</span>
-          </p>
-        */}
       </div>
 
-      <div className="mt-4 rounded-xl bg-slate-50 p-3">
-        <p className="text-xs font-medium text-slate-500">Notes</p>
-        <p className="mt-1 text-sm text-slate-800">{product.notes ?? "No notes."}</p>
-      </div>
+      {/* ✅ Only show Notes section if there are actual notes */}
+      {hasNotes && (
+        <div className="mt-4 rounded-xl bg-slate-50 p-3">
+          <p className="text-xs font-medium text-slate-500">Notes</p>
+          <p className="mt-1 text-sm text-slate-800">{product.notes}</p>
+        </div>
+      )}
 
-      <p className="mt-4 text-xs text-slate-500">
-        Last updated: {new Date(product.updatedAt).toLocaleString()}
-      </p>
+      {/* Only show updated date if present */}
+      {product.updatedAt && (
+        <p className="mt-4 text-xs text-slate-500">
+          Last updated: {new Date(product.updatedAt).toLocaleString()}
+        </p>
+      )}
     </div>
   );
 }
