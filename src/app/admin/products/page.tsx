@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState, useEffect } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Shell from "@/components/Shell";
+import AdminGate from "@/components/AdminGate";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 
 type ProductPick = {
@@ -25,12 +27,15 @@ function vibrate(pattern: number | number[]) {
 }
 
 export default function AdminProductsPage() {
+  // Token comes from /admin (sessionStorage). No re-enter here.
   const [token, setToken] = useState("");
+
   const [busy, setBusy] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<{ row: number; message: string }[]>([]);
+
   const canAct = useMemo(() => token.trim().length > 0, [token]);
 
   // --- Barcode linking UI state ---
@@ -46,27 +51,24 @@ export default function AdminProductsPage() {
   const hasResultRef = useRef(false);
   const [cameraOn, setCameraOn] = useState(false);
 
-  // Search products (simple debounce)
+  // Keep token synced with sessionStorage (unlock/logoff)
   useEffect(() => {
-    if (!canAct) return;
-    const t = setTimeout(async () => {
-      const query = q.trim();
-      if (!query) {
-        setResults([]);
-        return;
-      }
+    function syncToken() {
       try {
-        const res = await fetch(`/api/admin/products/search?q=${encodeURIComponent(query)}`, {
-          headers: { "x-admin-token": token },
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) return;
-        setResults(data.items ?? []);
-      } catch {}
-    }, 250);
-
-    return () => clearTimeout(t);
-  }, [q, token, canAct]);
+        const t = (sessionStorage.getItem("adminToken") ?? "").trim();
+        setToken(t);
+      } catch {
+        setToken("");
+      }
+    }
+    syncToken();
+    window.addEventListener("admin-token-updated", syncToken);
+    window.addEventListener("storage", syncToken);
+    return () => {
+      window.removeEventListener("admin-token-updated", syncToken);
+      window.removeEventListener("storage", syncToken);
+    };
+  }, []);
 
   function stopCamera() {
     try {
@@ -78,6 +80,10 @@ export default function AdminProductsPage() {
 
   async function assignBarcode(codeRaw: string) {
     const code = codeRaw.trim();
+    if (!canAct) {
+      setError("Admin is locked. Go to Admin to unlock.");
+      return;
+    }
     if (!selected) {
       setError("Select a product first.");
       vibrate([40, 60, 40]);
@@ -90,16 +96,19 @@ export default function AdminProductsPage() {
     setBusy(true);
 
     try {
-      const res = await fetch(`/api/admin/products/${encodeURIComponent(selected.id)}/assign-barcode`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-token": token,
-        },
-        body: JSON.stringify({ barcode: code }),
-      });
-      const data = await res.json().catch(() => ({}));
+      const res = await fetch(
+        `/api/admin/products/${encodeURIComponent(selected.id)}/assign-barcode`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-token": token,
+          },
+          body: JSON.stringify({ barcode: code }),
+        }
+      );
 
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data?.message ?? "Failed to assign barcode.");
         vibrate([60, 80, 60]);
@@ -123,9 +132,37 @@ export default function AdminProductsPage() {
     }
   }
 
+  // Search products (debounce)
+  useEffect(() => {
+    if (!canAct) return;
+
+    const tmr = setTimeout(async () => {
+      const query = q.trim();
+      if (!query) {
+        setResults([]);
+        return;
+      }
+      try {
+        const res = await fetch(`/api/admin/products/search?q=${encodeURIComponent(query)}`, {
+          headers: { "x-admin-token": token },
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        setResults(data.items ?? []);
+      } catch {}
+    }, 250);
+
+    return () => clearTimeout(tmr);
+  }, [q, token, canAct]);
+
   // Camera scanning for admin linking
   useEffect(() => {
     if (!cameraOn) return;
+    if (!canAct) {
+      setCameraOn(false);
+      return;
+    }
 
     let alive = true;
     const reader = new BrowserMultiFormatReader();
@@ -146,10 +183,7 @@ export default function AdminProductsPage() {
             if (result) {
               hasResultRef.current = true;
               const code = result.getText().trim();
-
-              // feedback
               vibrate(40);
-
               stopCamera();
               await assignBarcode(code);
               return;
@@ -187,9 +221,9 @@ export default function AdminProductsPage() {
       } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraOn]);
+  }, [cameraOn, canAct]);
 
-  // --- Your existing CSV functions (unchanged) ---
+  // --- CSV functions ---
   async function exportCsv() {
     setError(null);
     setMessage(null);
@@ -240,6 +274,7 @@ export default function AdminProductsPage() {
         headers: { "x-admin-token": token },
         body: form,
       });
+
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data?.message ?? data?.error ?? "Import failed.");
@@ -247,6 +282,7 @@ export default function AdminProductsPage() {
         vibrate([60, 80, 60]);
         return;
       }
+
       setMessage(`Import complete: ${data.upserted ?? 0} item(s) upserted.`);
       setWarnings(data.warnings ?? []);
       vibrate(40);
@@ -259,9 +295,9 @@ export default function AdminProductsPage() {
 
   function downloadTemplate() {
     const csv = [
-      "barcode,name,shelfLifeDays,notes,isActive",
-      "0623461234567,Butter Croissant 4-Pack,2,Best for same/next day,true",
-      "0623467654321,Sourdough Loaf (Frozen),3,,true",
+      "barcode,name,shelfLifeDays,notes,isActive,ddvOnProduct",
+      "062357000001,Baxter Loaf Cakes — Chocolate,7,,true,false",
+      "062357000002,PC Croissants — Butter,2,,true,true",
     ].join("\n");
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -277,234 +313,244 @@ export default function AdminProductsPage() {
 
   return (
     <Shell
-      title="Products CSV import/export"
-      subtitle="Bulk load frozen SKU shelf-life days, export your list, or link barcodes to products. Requires manager token."
+      title="Products"
+      subtitle="CSV import/export and barcode linking. Manager access required."
     >
-      <div className="space-y-6">
-        {/* Token */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <label className="text-sm font-medium">Admin token</label>
-          <input
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-mono outline-none focus:ring-2 focus:ring-slate-300"
-            placeholder="Paste ADMIN_TOKEN"
-          />
-          <p className="mt-2 text-xs text-slate-500">
-            Actions on this page send <span className="font-mono">admintoken</span>. Will be replaced with SSO later.
-          </p>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              onClick={exportCsv}
-              disabled={!canAct || busy}
-              className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-            >
-              {busy ? "Working…" : "Export CSV"}
-            </button>
-
-            <button
-              onClick={downloadTemplate}
-              className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-            >
-              Download template
-            </button>
-          </div>
-        </div>
-
-        {/* Link barcode panel */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-          <div>
-            <p className="text-sm font-semibold">Link barcode to product</p>
-            <p className="mt-1 text-xs text-slate-500">
-              Search a product, select it, then scan with Zebra (handheld) or camera to assign its barcode.
-            </p>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="space-y-3">
-              <label className="text-sm font-medium">Search product name</label>
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                disabled={!canAct}
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
-                placeholder="e.g., Baxter Loaf Cakes"
-              />
-
-              <div className="rounded-xl border border-slate-200 overflow-hidden">
-                <div className="max-h-64 overflow-auto">
-                  {results.length === 0 ? (
-                    <div className="p-3 text-xs text-slate-500">No results yet.</div>
-                  ) : (
-                    results.map((p) => (
-                      <button
-                        key={p.id}
-                        onClick={() => {
-                          setSelected(p);
-                          setMessage(null);
-                          setError(null);
-                          setBarcodeInput("");
-                          inputRef.current?.focus();
-                          vibrate(20);
-                        }}
-                        className={`w-full text-left px-3 py-2 border-b last:border-b-0 text-sm hover:bg-slate-50 ${
-                          selected?.id === p.id ? "bg-slate-50" : "bg-white"
-                        }`}
-                      >
-                        <div className="font-semibold text-slate-900">{p.name}</div>
-                        <div className="text-xs text-slate-500">
-                          Shelf: {p.shelfLifeDays} days • Barcode:{" "}
-                          <span className="font-mono">{p.barcode ?? "—"}</span>
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
+      <AdminGate>
+        <div className="space-y-6">
+          {/* Admin session badge */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Manager session</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  API requests include <span className="font-mono">x-admin-token</span>. Manage token in{" "}
+                  <Link href="/admin" className="font-semibold underline">
+                    Admin
+                  </Link>
+                  .
+                </p>
               </div>
+              <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-mono text-slate-700">
+                {token ? "UNLOCKED" : "LOCKED"}
+              </div>
+            </div>
 
-              {selected ? (
-                <div className="rounded-xl bg-slate-50 p-3 text-sm">
-                  <div className="text-xs text-slate-500">Selected</div>
-                  <div className="font-semibold">{selected.name}</div>
-                  <div className="text-xs text-slate-600 mt-1">
-                    Current barcode: <span className="font-mono">{selected.barcode ?? "—"}</span>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={exportCsv}
+                disabled={!canAct || busy}
+                className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+              >
+                {busy ? "Working…" : "Export CSV"}
+              </button>
+
+              <button
+                onClick={downloadTemplate}
+                className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+              >
+                Download template
+              </button>
+            </div>
+          </div>
+
+          {/* Link barcode panel */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+            <div>
+              <p className="text-sm font-semibold">Link barcode to product</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Search a product, select it, then scan with Zebra (handheld) or camera to assign its barcode.
+              </p>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="space-y-3">
+                <label className="text-sm font-medium">Search product name</label>
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  disabled={!canAct}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
+                  placeholder="e.g., Baxter Loaf Cakes"
+                />
+
+                <div className="rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="max-h-64 overflow-auto">
+                    {results.length === 0 ? (
+                      <div className="p-3 text-xs text-slate-500">No results yet.</div>
+                    ) : (
+                      results.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            setSelected(p);
+                            setMessage(null);
+                            setError(null);
+                            setBarcodeInput("");
+                            inputRef.current?.focus();
+                            vibrate(20);
+                          }}
+                          className={`w-full text-left px-3 py-2 border-b last:border-b-0 text-sm hover:bg-slate-50 ${
+                            selected?.id === p.id ? "bg-slate-50" : "bg-white"
+                          }`}
+                        >
+                          <div className="font-semibold text-slate-900">{p.name}</div>
+                          <div className="text-xs text-slate-500">
+                            Shelf: {p.shelfLifeDays} days • Barcode:{" "}
+                            <span className="font-mono">{p.barcode ?? "—"}</span>
+                          </div>
+                        </button>
+                      ))
+                    )}
                   </div>
                 </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-600">
-                  Select a product to link a barcode.
-                </div>
-              )}
-            </div>
 
-            <div className="space-y-3">
-              <label className="text-sm font-medium">Scan barcode (Zebra) or type</label>
-              <input
-                ref={inputRef}
-                value={barcodeInput}
-                onChange={async (e) => {
-                  const v = e.target.value;
-                  setBarcodeInput(v);
-                  const t = v.trim();
-                  if (looksLikeBarcode(t)) {
-                    vibrate(30);
-                    await assignBarcode(t);
-                  }
-                }}
-                onKeyDown={async (e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    vibrate(30);
-                    await assignBarcode(barcodeInput);
-                  }
-                }}
-                disabled={!canAct || busy}
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-mono outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
-                placeholder="Focus here, then scan with Zebra"
-                inputMode="numeric"
-                autoComplete="off"
-              />
+                {selected ? (
+                  <div className="rounded-xl bg-slate-50 p-3 text-sm">
+                    <div className="text-xs text-slate-500">Selected</div>
+                    <div className="font-semibold">{selected.name}</div>
+                    <div className="text-xs text-slate-600 mt-1">
+                      Current barcode: <span className="font-mono">{selected.barcode ?? "—"}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+                    Select a product to link a barcode.
+                  </div>
+                )}
+              </div>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setError(null);
-                    setMessage(null);
-                    setCameraOn((s) => !s);
-                    if (cameraOn) stopCamera();
+              <div className="space-y-3">
+                <label className="text-sm font-medium">Scan barcode (Zebra) or type</label>
+                <input
+                  ref={inputRef}
+                  value={barcodeInput}
+                  onChange={async (e) => {
+                    const v = e.target.value;
+                    setBarcodeInput(v);
+                    const t = v.trim();
+                    if (looksLikeBarcode(t)) {
+                      vibrate(30);
+                      await assignBarcode(t);
+                      setBarcodeInput("");
+                    }
+                  }}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      vibrate(30);
+                      await assignBarcode(barcodeInput);
+                      setBarcodeInput("");
+                    }
                   }}
                   disabled={!canAct || busy}
-                  className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-                >
-                  {cameraOn ? "Stop camera" : "Camera scan"}
-                </button>
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-mono outline-none focus:ring-2 focus:ring-slate-300 disabled:opacity-60"
+                  placeholder="Focus here, then scan with Zebra"
+                  inputMode="numeric"
+                  autoComplete="off"
+                />
 
-                <button
-                  onClick={() => {
-                    stopCamera();
-                    setBarcodeInput("");
-                    inputRef.current?.focus();
-                  }}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-                >
-                  Focus handheld
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setError(null);
+                      setMessage(null);
+                      setCameraOn((s) => !s);
+                      if (cameraOn) stopCamera();
+                    }}
+                    disabled={!canAct || busy}
+                    className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                  >
+                    {cameraOn ? "Stop camera" : "Camera scan"}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      stopCamera();
+                      setBarcodeInput("");
+                      inputRef.current?.focus();
+                    }}
+                    className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
+                  >
+                    Focus handheld
+                  </button>
+                </div>
+
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                  <video ref={videoRef} className="h-[240px] w-full object-cover" muted playsInline />
+                </div>
+
+                <p className="text-xs text-slate-500">
+                  Mobile feedback: your phone will vibrate when it captures a barcode and again when it saves.
+                </p>
               </div>
+            </div>
 
-              <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-                <video ref={videoRef} className="h-[240px] w-full object-cover" muted playsInline />
+            {message && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                {message}
               </div>
-
-              <p className="text-xs text-slate-500">
-                Mobile feedback: your phone will vibrate when it captures a barcode and again when it saves.
-              </p>
-            </div>
+            )}
+            {error && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                {error}
+              </div>
+            )}
           </div>
 
-          {message && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-              {message}
+          {/* Import */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold">Import products</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  CSV headers:{" "}
+                  <span className="font-mono">barcode,name,shelfLifeDays,notes,isActive,ddvOnProduct</span>
+                </p>
+              </div>
             </div>
-          )}
-          {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              {error}
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+              />
+              <button
+                onClick={importCsv}
+                disabled={!canAct || busy || !file}
+                className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
+              >
+                {busy ? "Working…" : "Import CSV"}
+              </button>
             </div>
-          )}
+
+            <p className="mt-3 text-xs text-slate-500">
+              Import is <span className="font-semibold">upsert</span> by barcode: existing items update, new items insert.
+            </p>
+
+            {warnings.length > 0 && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-semibold text-amber-900">Warnings</p>
+                <p className="mt-1 text-xs text-amber-800">
+                  Some rows were skipped. Row numbers refer to the CSV line number.
+                </p>
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-amber-900">
+                  {warnings.slice(0, 20).map((w, idx) => (
+                    <li key={idx}>
+                      Row {w.row}: {w.message}
+                    </li>
+                  ))}
+                </ul>
+                {warnings.length > 20 ? (
+                  <p className="mt-2 text-xs text-amber-800">…and {warnings.length - 20} more</p>
+                ) : null}
+              </div>
+            )}
+          </div>
         </div>
-
-        {/* Import */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold">Import products</p>
-              <p className="mt-1 text-xs text-slate-500">
-                CSV headers: <span className="font-mono">barcode,name,shelfLifeDays,notes,isActive</span>
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
-            />
-            <button
-              onClick={importCsv}
-              disabled={!canAct || busy || !file}
-              className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
-            >
-              {busy ? "Working…" : "Import CSV"}
-            </button>
-          </div>
-
-          <p className="mt-3 text-xs text-slate-500">
-            Import is <span className="font-semibold">upsert</span> by barcode: existing items update (version bumps), new items insert.
-          </p>
-
-          {warnings.length > 0 && (
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm font-semibold text-amber-900">Warnings</p>
-              <p className="mt-1 text-xs text-amber-800">
-                Some rows were skipped. Row numbers refer to the CSV line number.
-              </p>
-              <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-amber-900">
-                {warnings.slice(0, 20).map((w, idx) => (
-                  <li key={idx}>
-                    Row {w.row}: {w.message}
-                  </li>
-                ))}
-              </ul>
-              {warnings.length > 20 ? (
-                <p className="mt-2 text-xs text-amber-800">…and {warnings.length - 20} more</p>
-              ) : null}
-            </div>
-          )}
-        </div>
-      </div>
+      </AdminGate>
     </Shell>
   );
 }

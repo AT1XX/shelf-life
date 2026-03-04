@@ -27,6 +27,8 @@ function NavLink({
   );
 }
 
+
+
 export default function Shell({
   title,
   subtitle,
@@ -39,6 +41,27 @@ export default function Shell({
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement | null>(null);
 
+  const [hasAdmin, setHasAdmin] = useState(false);
+
+  useEffect(() => {
+    function sync() {
+      try {
+        const t = sessionStorage.getItem("adminToken") ?? "";
+        setHasAdmin(t.trim().length > 0);
+      } catch {
+        setHasAdmin(false);
+      }
+    }
+
+    sync();
+    window.addEventListener("admin-token-updated", sync);
+    window.addEventListener("storage", sync); // helpful if multiple tabs
+
+    return () => {
+      window.removeEventListener("admin-token-updated", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
   // Close dropdown when clicking outside
   useEffect(() => {
     function onDown(e: MouseEvent) {
@@ -63,8 +86,8 @@ export default function Shell({
             <NavLink href="/scan">Scan</NavLink>
             <NavLink href="/search">Search</NavLink>
             <NavLink href="/request">Request</NavLink>
-            <NavLink href="/admin/approvals">Approvals</NavLink>
-            <NavLink href="/admin/products">Products</NavLink>
+            <NavLink href="/admin">Admin</NavLink>
+            
           </nav>
 
           {/* Mobile nav: show main links + More menu */}
@@ -89,30 +112,52 @@ export default function Shell({
                   className="absolute right-0 z-50 mt-2 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
                   role="menu"
                 >
-                   <Link
+                  <Link
                     href="/request"
                     onClick={() => setMoreOpen(false)}
                     className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
                     role="menuitem"
                   >
-                     Request
+                    Request
                   </Link>
+
                   <Link
-                    href="/admin/approvals"
+                    href="/admin"
                     onClick={() => setMoreOpen(false)}
                     className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
                     role="menuitem"
                   >
-                    Approvals
+                    Admin
                   </Link>
-                  <Link
-                    href="/admin/products"
-                    onClick={() => setMoreOpen(false)}
-                    className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
-                    role="menuitem"
-                  >
-                    Products
-                  </Link>
+
+                  {hasAdmin ? (
+                    <>
+                      <Link
+                        href="/admin/approvals"
+                        onClick={() => setMoreOpen(false)}
+                        className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                        role="menuitem"
+                      >
+                        Approvals
+                      </Link>
+                      <Link
+                        href="/admin/products"
+                        onClick={() => setMoreOpen(false)}
+                        className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                        role="menuitem"
+                      >
+                        Products
+                      </Link>
+                      <Link
+                        href="/admin/audit"
+                        onClick={() => setMoreOpen(false)}
+                        className="block px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                        role="menuitem"
+                      >
+                        Audit
+                      </Link>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
             </div>
