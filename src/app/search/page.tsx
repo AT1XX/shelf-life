@@ -293,11 +293,12 @@ export default function SearchPage() {
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <label className="text-sm font-medium">Thawed date</label>
             <input
-              type="date"
-              value={thawDateStr}
-              onChange={(e) => setThawDateStr(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-            />
+                type="date"
+                value={thawDateStr}
+                onChange={(e) => setThawDateStr(e.target.value)}
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 h-12 text-[16px] leading-none outline-none focus:ring-2 focus:ring-slate-300"
+                style={{ WebkitAppearance: "none" }}
+              />
             <div className="mt-2 text-xs text-slate-500">Thaw day counts as Day 1.</div>
           </div>
         </div>
