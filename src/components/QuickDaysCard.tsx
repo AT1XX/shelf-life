@@ -47,11 +47,9 @@ export default function QuickDaysCard({ thawDate }: { thawDate: Date }) {
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Quick Day Calculator
+          Shelf-life results
         </p>
-        <h2 className="text-lg font-semibold mt-1">
-          Gun date from thaw
-        </h2>
+       
       </div>
 
       {/* buffer selector */}
